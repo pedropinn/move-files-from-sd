@@ -8,67 +8,85 @@ $number = 0
 
 $device = "gopro"
 $fileFolder = "\DCIM\100GOPRO"
-$extensionProxy = "LRV"
-$extensionTrash = "THM"
-$destinationFolder = "$mainFolder\$device\$date"
+$extensionProxy = "lrv"
+$extensionTrash = "thm"
+
+
+
+# Create folder with custom name
+Write-Host "-------------------------------------------------------------"
+$name = Read-Host "Enter the name for the folder"
+$destinationFolder = "$mainFolder\$device\$date-$name"
+
+# $destinationFolder = "$mainFolder\$device\$date"
 
 
 if (-not (Test-Path -Path $destinationFolder)) {
     New-Item -ItemType Directory -Path "$destinationFolder" | Out-Null
 }
 
+# Create Strabilized
 $stabilizedFolder = "$destinationFolder\stabilized"
 if (-not (Test-Path -Path $stabilizedFolder)) {
-    New-Item -ItemType Directory -Path "$stabilizedFolder" -Force | Out-Null
+    New-Item -ItemType Directory -Path $stabilizedFolder -Force | Out-Null
 }
-
 
 # Sum folder size
-Get-ChildItem -File -Recurse -Path $fileFolder | ForEach-Object {
+Get-ChildItem -File -Recurse -Path $fileFolder -Force | ForEach-Object {
     $totalFileSize += $_.Length
 }
+
+
+
 
 Write-Host "-------------------------------------------------------------"
 $totalFileSizeGB = "{0:F2}" -f ($totalFileSize / 1GB)
 Write-Host "Total size of files in the folder: $($totalFileSizeGB) GB"
 
-Write-Host "-------------------------------------------------------------"
-Write-Host "Moving video files..."
+#  Copy mp4 files
+$files = Get-ChildItem -Path $fileFolder -Filter *.mp4 -Force
+if ($files.Count -gt 0) {
+    Write-Host "-------------------------------------------------------------"
+    Write-Host "Moving video files..."
+    $totalFiles = $files.Count
+    $fileCounter = 0
 
-# Get list of .mp4 files in the source folder
-$files = Get-ChildItem -Path $fileFolder -Filter *.mp4
-$totalFiles = $files.Count
-$fileCounter = 0
-
-foreach ($file in $files) {
-    $fileCounter += 1
-    Write-Host "Moving file: $($file.Name) - File $($fileCounter) of $($totalFiles)"
-    Move-Item $file.FullName -Destination $destinationFolder
+    foreach ($file in $files) {
+        $fileCounter += 1
+        Write-Host "Moving file: $($file.Name) - File $($fileCounter) of $($totalFiles)"
+        Move-Item $file.FullName -Destination $destinationFolder
+    }
 }
 
-
-$proxyFiles = Get-ChildItem -Path $fileFolder -Filter "*.$extensionProxy"
+# Move Proxy files
+$proxyFiles = Get-ChildItem -Path $fileFolder -Filter *.LRV -Force
 if ($proxyFiles.Count -gt 0) {
     Write-Host "-------------------------------------------------------------"
     Write-Host "Moving proxy files..."
+    $totalFiles = $proxyFiles.Count
     $fileCounter = 0
-    $proxyFolder = "$destinationFolder\proxy"
+
+    $proxyFolder = Join-Path -Path $destinationFolder -ChildPath "proxy"
     New-Item -ItemType Directory -Path $proxyFolder -Force | Out-Null
 
     foreach ($file in $proxyFiles) {
         $fileCounter += 1
     
-        $newFileName = $file.Name -replace "\.$extensionProxy", '.mp4'
-        $newFilePath = Join-Path -Path $file.Directory.FullName -ChildPath $newFileName
+        $newFileName = $file.Name -replace "\.LRV", '.mp4'
+        $newFilePath = Join-Path -Path $file.DirectoryName -ChildPath $newFileName
         
         Write-Host "Moving file: $($file.Name) - File $($fileCounter) of $($totalFiles)"
         Rename-Item -Path $file.FullName -NewName $newFileName
         Move-Item -Path $newFilePath -Destination $proxyFolder
+    
+        $movedFilePath = Join-Path -Path $proxyFolder -ChildPath $newFileName
+        Set-ItemProperty -Path $movedFilePath -Name Attributes -Value ([System.IO.FileAttributes]::Normal)
     }
 }
 
+
 # Delete useless files
-$trashFiles = Get-ChildItem -Path $fileFolder -Filter "*.$extensionTrash"
+$trashFiles = Get-ChildItem -Path $fileFolder -Filter *.THM -Force
 if ($trashFiles.Count -gt 0) {
     Write-Host "-------------------------------------------------------------"
     Write-Host "Remove trash files..."
@@ -76,6 +94,7 @@ if ($trashFiles.Count -gt 0) {
         Remove-Item $file.FullName -Force
     }
 }
+
 
 # Calculate time difference
 $endTime = Get-Date -Format "HH:mm:ss"
